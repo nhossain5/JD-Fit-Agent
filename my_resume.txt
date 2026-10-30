@@ -1,0 +1,81 @@
+                                                 Nahid Hossain
+                              Lawrenceville, GA | (470) 367-1529 | m.nahid1924@gmail.com
+                                linkedin.com/in/nahidhossain11 | github.com/nhossain5
+
+Education
+ Georgia Institute of Technology                                                                     Expected Dec 2027
+ M.S. in Computer Science (Machine Learning specialization)                                                   Atlanta, GA
+ Georgia State University                                                                          Aug 2019 – Dec 2022
+ B.S. in Computer Science, Minor in Physics                                                                   Atlanta, GA
+
+Technical Experience
+ Senior Shield Technologies Inc                                                                     May 2024 – Present
+ Software Engineer & Co-Founder                                                                              Atlanta, GA
+ – Led development of the caregiver app (React/TypeScript web, then Flutter) delivering real-time incontinence and
+   fall-risk alerts
+ – Migrated the data layer from Firestore to a SQLite device registry, cutting latency and recurring cloud cost on the
+   real-time alert path
+ – Built a concurrent, event-driven WebSocket server in Python ingesting simultaneous ESP32 telemetry streams and
+   fanning out real-time alerts to caregiver devices via an FCM push pipeline
+ – Designed a patent-pending incontinence monitoring pad that reduces caregiver workload via smart alerts
+ – Triumphed in 17 innovation competitions (National Institute on Aging, Mayo Clinic, etc.) and secured $150K+ in
+   non-dilutive funding to advance product development
+ – Conducted 200+ customer discovery interviews with caregivers, hospitals, and senior care facilities, directly influencing
+   product design and validating market needs
+ Uniq Technologies Inc (Airwyse)                                                                   Jan 2024 – Jun 2024
+ Systems Engineer                                                                                        Suwanee, GA
+ – Automated repetitive tasks using Python scripts, cutting process time by 50% and boosting team efficiency
+ – Optimized product designs through cross-functional collaboration, improving compliance with safety/quality standards
+   by 30%
+ – Streamlined project workflows by managing planning, budgets, and SOPs, reducing operational delays by 20%
+ – Created a network diagram for a client (University of Georgia) and configured network connectivity to bring a DJI
+   drone docking station online
+ ECOM America Ltd                                                                                  Oct 2023 – Jan 2024
+ Software Tester Intern                                                                                     Gainesville, GA
+ – Performed rigorous functionality testing, ensuring software compliance with technical specifications and reducing
+   post-release defects by 25%
+ – Identified critical design gaps through specification analysis, enhancing product reliability before deployment
+ – Collaborated with offshore teams to streamline defect resolution, improving cross-functional communication efficiency
+   by 20%
+ – Executed deep, multi-step test cases on a mobile app paired with physical sensor devices (pressure, temperature, gas)
+   against written specifications, logging defects in a shared tracker with offshore developers
+
+Projects
+ Dynamico — github.com/Team11GSU/final-project-2
+ Python, ReactJS, Flask, PostgreSQL, Google OAuth, Socket.IO, AWS S3
+ – Built a collaborative project-planning web application with a team of four, rotating through the product manager role
+ – Implemented Google OAuth authentication and Flask-Mail invitation flows, and designed the ReactJS frontend using
+   Grommet.io
+ – Awarded Critic’s Choice for best application among 15 teams, judged by an Engineer in Residence from Meta
+ Popular Movie Explorer — github.com/nhossain5/Milestone3
+ Python, ReactJS, Flask, PostgreSQL
+ – Developed a movie-review website where users can submit ratings, write comments, and view reviews from other users
+ – Integrated The Movie Database API to retrieve movie information and the Wikipedia API to obtain relevant links
+ – Implemented Flask-SQLAlchemy for PostgreSQL integration and configured Flask-Login for user authentication
+ OrderDesk — github.com/nhossain5/OrderDesk
+ Python, pytest, Selenium, REST API Testing
+ – Built a test automation framework for a trade-order web application using Python, pytest, and Selenium, with
+   separate API and UI test suites
+ – Automated REST API tests validating order endpoints and end-to-end Selenium UI tests covering core user workflows,
+   with all suites passing in the current build
+ Banglish Siri — github.com/nhossain5/BanglishSiri
+ Java, Sphinx4, FreeTTS, Speech Recognition, NLP
+ – Built a multilingual voice user interface performing speech recognition and command execution across English, Bangla,
+   and code-switched Banglish input
+ – Integrated Sphinx4 for acoustic decoding and FreeTTS for speech synthesis in a closed-loop voice pipeline
+ – Authored a custom lexical model (40 words) and grammar-based language model (30 commands) mapping recognized
+   speech to system actions
+ Family Tree Application — C#, ASP.NET, SQL Server, WinForms, IIS
+ – Developed features for a family-tree application in an existing C#/ASP.NET codebase, working with SQL Server data
+   access and a WinForms interface deployed on IIS
+
+Skills
+ Languages: Java, C#, Python, JavaScript, TypeScript, Dart, C, C++, SQL, Bash, HTML/CSS, Assembly, Haskell,
+ Prolog
+ Frameworks: React, Next.js, Node.js/Express, Flutter, Riverpod, FastAPI, Flask, Django, ASP.NET, Streamlit
+ Testing: Test Automation, pytest, Selenium, Postman, API Testing, UI/E2E Testing
+ Cloud & Infra: AWS, DigitalOcean, Firebase/FCM, Twilio, WebSockets, Event-Driven, Linux
+ Databases: PostgreSQL, MySQL, SQLite, Microsoft SQL Server, Firestore (NoSQL)
+ Tools & Concepts: Git, Jira, REST APIs, Code Review, OOP, Design Patterns, Microservices, Data Structures &
+ Algorithms, Agile, SDLC, Figma, VS Code
+

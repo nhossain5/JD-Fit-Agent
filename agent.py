@@ -1,16 +1,22 @@
 """
-JD Fit Agent -- Milestone 2
-An agent that CHAINS two tools: it extracts the required skills from a raw
-job description, then checks which of those a resume covers.
- 
-The loop is the same as milestone 1; we just gave the agent a second tool.
-  1. The model gets a resume + a raw JD.
-  2. It calls extract_required_skills on the JD.
-  3. It calls find_missing_keywords with the resume + the extracted skills.
-  4. It summarizes the fit.
- 
+JD Fit Agent -- Milestone 3 (refactored for robustness)
+
+Key design lesson: tools read large data (resume, JD) from shared MEMORY
+instead of making the model pass it through tool-call arguments. The model
+only passes SMALL things (a short skills list). This avoids the model having
+to re-emit a whole resume/JD as JSON -- which breaks on long text.
+
+Memory (agent_memory.json) holds:
+  - resume       : your resume text
+  - current_jd   : the job description being assessed
+
+Tool chain the agent runs:
+  1. get_resume              -> read the stored resume (so it can summarize)
+  2. extract_required_skills -> read the stored JD, return its required skills
+  3. find_missing_keywords   -> compare those skills against the stored resume
+  4. summarize the fit
+
 Runtime model: Groq (free tier), via its OpenAI-compatible endpoint.
-Swap providers by changing BASE_URL, MODEL, and the key -- nothing else.
 """
 
 import os
@@ -21,21 +27,70 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # --- Model configuration -----------------------------------------------------
-# Gemini's OpenAI-compatible endpoint. To switch providers later, change only
-# these three values (e.g., Groq: https://api.groq.com/openai/v1 + a Llama model).
-# BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"
 BASE_URL = "https://api.groq.com/openai/v1"
 MODEL = "openai/gpt-oss-120b"
-# API_KEY = os.environ.get("GEMINI_API_KEY")
 API_KEY = os.environ.get("GROQ_API_KEY")
 
 if not API_KEY:
-    raise SystemExit("Set API_KEY in your .env file (copy .env.example).")
+    raise SystemExit("Set GROQ_API_KEY in your .env file (copy .env.example).")
 
 client = OpenAI(api_key=API_KEY, base_url=BASE_URL)
 
-# --- Tool 1: extract required skills from a raw JD ---------------------------
-# A simple known-skills list the extractor scans for. Deterministic on purpose.
+
+# --- Persistent memory -------------------------------------------------------
+MEMORY_FILE = "agent_memory.json"
+
+
+def load_memory() -> dict:
+    if os.path.exists(MEMORY_FILE):
+        with open(MEMORY_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    return {}
+
+
+def save_memory(data: dict) -> None:
+    with open(MEMORY_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2)
+
+
+DEFAULT_RESUME = (
+    "Software engineer. Built full-stack apps with Python, Flask, React, "
+    "and PostgreSQL. Wrote automated tests with pytest and Selenium. "
+    "Comfortable with Git and REST APIs."
+)
+
+
+def ensure_resume_in_memory() -> None:
+    mem = load_memory()
+    if "resume" not in mem:
+        mem["resume"] = DEFAULT_RESUME
+        save_memory(mem)
+        print(f"(Seeded a resume into {MEMORY_FILE} -- edit that file to use your real one.)\n")
+
+
+RESUME_FILE = "my_resume.txt"
+
+
+def load_resume_from_file() -> None:
+    """If my_resume.txt exists, load its text as the resume in memory."""
+    if os.path.exists(RESUME_FILE):
+        with open(RESUME_FILE, "r", encoding="utf-8") as f:
+            text = f.read().strip()
+        if text:
+            mem = load_memory()
+            mem["resume"] = text
+            save_memory(mem)
+            print(f"(Loaded your resume from {RESUME_FILE} into memory.)\n")
+
+
+def set_current_jd(jd_text: str) -> None:
+    """Store the JD being assessed in memory so tools can read it."""
+    mem = load_memory()
+    mem["current_jd"] = jd_text
+    save_memory(mem)
+
+
+# --- Tools (they READ from memory; the model passes only small data) ---------
 SKILL_VOCAB = [
     "Python", "Java", "C#", "C++", "JavaScript", "TypeScript", "SQL", "Go", "Bash",
     "React", "Angular", "Next.js", "Node.js", "Flask", "Django", "FastAPI", "Spring Boot",
@@ -45,95 +100,95 @@ SKILL_VOCAB = [
     "pytest", "Selenium", "JUnit", "Jest", "Git", "Agile",
 ]
 
-def extract_required_skills(jd_text: str) -> dict:
-    """Scan a raw job description for known skills from SKILL_VOCAB.
- 
-    A tool stays 'dumb': it just reports which known skills appear in the text.
-    The AGENT decides to call this first, then feeds the result into
-    find_missing_keywords -- that's the two-tool chain.
-    """
-    text = jd_text.lower()
+
+def get_resume() -> dict:
+    """Retrieve the user's resume from memory (so the model can read it)."""
+    mem = load_memory()
+    return {"resume": mem.get("resume", "")}
+
+
+def extract_required_skills() -> dict:
+    """Read the stored JD from memory and return the known skills it mentions."""
+    mem = load_memory()
+    text = mem.get("current_jd", "").lower()
     found = [skill for skill in SKILL_VOCAB if skill.lower() in text]
     return {"required_skills": found}
 
-# --- Tool 2: check which required skills the resume covers --------------------
-def find_missing_keywords(resume: str, required_skills: list) -> dict:
-    """Deterministically check which required skills appear in the resume."""
-    text = resume.lower()
+
+def find_missing_keywords(required_skills: list) -> dict:
+    """Compare the given required skills against the resume stored in memory."""
+    mem = load_memory()
+    text = mem.get("resume", "").lower()
     present, missing = [], []
     for skill in required_skills:
         (present if skill.lower() in text else missing).append(skill)
     return {"present": present, "missing": missing}
 
-# --- Tool schemas the model sees (OpenAI function-calling format) -------------
+
+# --- Tool schemas ------------------------------------------------------------
 TOOLS = [
     {
         "type": "function",
         "function": {
+            "name": "get_resume",
+            "description": "Retrieve the user's stored resume from memory.",
+            "parameters": {"type": "object", "properties": {}},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "extract_required_skills",
-            "description": "Extract the required technical skills mentioned in a raw job description.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "jd_text": {
-                        "type": "string",
-                        "description": "The full, raw job description text.",
-                    },
-                },
-                "required": ["jd_text"],
-            },
+            "description": "Extract the required technical skills from the stored job description.",
+            "parameters": {"type": "object", "properties": {}},
         },
     },
     {
         "type": "function",
         "function": {
             "name": "find_missing_keywords",
-            "description": "Check which required skills are present or missing in a resume.",
+            "description": "Given a list of required skills, check which are present or missing in the stored resume.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "resume": {
-                        "type": "string",
-                        "description": "The full resume text.",
-                    },
                     "required_skills": {
                         "type": "array",
                         "items": {"type": "string"},
                         "description": "The required skills (e.g., from extract_required_skills).",
                     },
                 },
-                "required": ["resume", "required_skills"],
+                "required": ["required_skills"],
             },
         },
     },
 ]
 
-# Map tool names -> the Python functions that run them.
 TOOL_FUNCS = {
+    "get_resume": get_resume,
     "extract_required_skills": extract_required_skills,
     "find_missing_keywords": find_missing_keywords,
 }
 
 
 # --- The agent loop ----------------------------------------------------------
-def run_agent(user_message: str, max_steps: int = 6) -> str:
-    """Run the tool-use loop until the model returns a final answer."""
+def run_agent(user_message: str, max_steps: int = 8) -> str:
     messages = [
         {
             "role": "system",
             "content": (
-                "You are a resume-fit assistant with two tools: "
-                "extract_required_skills (pulls required skills out of a raw job "
-                "description) and find_missing_keywords (checks which skills a resume "
-                "covers). When given a resume and a raw job description, FIRST call "
-                "extract_required_skills on the JD, THEN call find_missing_keywords with "
-                "the resume and the extracted skills, then give a short, honest fit "
-                "summary. Never invent skills."
+                "You are a resume-fit assistant. The resume and job description are "
+                "stored in memory. You have three tools: get_resume (read the stored "
+                "resume), extract_required_skills (get the job's required skills from "
+                "the stored JD), and find_missing_keywords (given a skills list, check "
+                "which the resume covers). Steps: FIRST call get_resume, THEN call "
+                "extract_required_skills, THEN call find_missing_keywords with the "
+                "skills from the previous step, then give a short, honest fit summary. "
+                "Never invent skills."
             ),
         },
         {"role": "user", "content": user_message},
     ]
- 
+
     for _ in range(max_steps):
         response = client.chat.completions.create(
             model=MODEL,
@@ -141,13 +196,10 @@ def run_agent(user_message: str, max_steps: int = 6) -> str:
             tools=TOOLS,
         )
         msg = response.choices[0].message
- 
-        # No tool call -> the model is done; return its final answer.
+
         if not msg.tool_calls:
             return msg.content or ""
- 
-        # Record the assistant's tool-call turn.
-        # Omit "content" when empty -- some providers reject empty text parts.
+
         assistant_msg = {
             "role": "assistant",
             "tool_calls": [
@@ -165,11 +217,10 @@ def run_agent(user_message: str, max_steps: int = 6) -> str:
         if msg.content:
             assistant_msg["content"] = msg.content
         messages.append(assistant_msg)
- 
-        # Execute each requested tool and feed the results back to the model.
+
         for tc in msg.tool_calls:
             name = tc.function.name
-            args = json.loads(tc.function.arguments)
+            args = json.loads(tc.function.arguments) if tc.function.arguments else {}
             print(f"  [agent] calling tool: {name}({list(args.keys())})")
             result = TOOL_FUNCS[name](**args)
             messages.append(
@@ -179,30 +230,37 @@ def run_agent(user_message: str, max_steps: int = 6) -> str:
                     "content": json.dumps(result),
                 }
             )
- 
+
     return "Stopped: reached max steps without a final answer."
 
 
 # --- Try it ------------------------------------------------------------------
 if __name__ == "__main__":
-    sample_resume = (
-        "Software engineer. Built full-stack apps with Python, Flask, React, "
-        "and PostgreSQL. Wrote automated tests with pytest and Selenium. "
-        "Comfortable with Git and REST APIs."
-    )
-    sample_jd = (
+    load_resume_from_file()    # if my_resume.txt exists, use your real resume
+    ensure_resume_in_memory()  # otherwise seed a sample on first run
+
+    # Paste a REAL job description into jd.txt to test it.
+    SAMPLE_JD = (
         "We're hiring a Software Engineer to build backend services in Python "
         "and a React frontend. You'll deploy on AWS using Docker and maintain "
         "our CI/CD pipelines. PostgreSQL and REST APIs required; Kubernetes a plus."
     )
+    JD_FILE = "jd.txt"
+    if os.path.exists(JD_FILE):
+        with open(JD_FILE, "r", encoding="utf-8") as f:
+            jd_text = f.read().strip()
+        print(f"(Using job description from {JD_FILE}.)\n")
+    else:
+        jd_text = SAMPLE_JD
+        print(f"(No {JD_FILE} found -- using the built-in sample. Create {JD_FILE} to test a real JD.)\n")
+
+    set_current_jd(jd_text)  # store the JD so tools can read it (no big arg through the model)
+
     task = (
-        "Here is my resume:\n\n"
-        f"{sample_resume}\n\n"
-        "Here is the job description:\n\n"
-        f"{sample_jd}\n\n"
+        "A resume and a job description are stored in memory. "
         "Which required skills am I missing, and how is my overall fit?"
     )
- 
+
     print("Running agent...\n")
     try:
         answer = run_agent(task)
