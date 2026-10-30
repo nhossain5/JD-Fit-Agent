@@ -13,3 +13,7 @@ __pycache__/
 .vscode/
 .idea/
 .DS_Store
+
+agent_memory.json
+my_resume.txt
+jd.txt
