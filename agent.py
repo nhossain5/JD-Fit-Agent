@@ -1,18 +1,16 @@
 """
-JD Fit Agent -- Milestone 3 (refactored for robustness)
+JD Fit Agent -- Milestone 3.5: LLM-based skill extraction
 
-Key design lesson: tools read large data (resume, JD) from shared MEMORY
-instead of making the model pass it through tool-call arguments. The model
-only passes SMALL things (a short skills list). This avoids the model having
-to re-emit a whole resume/JD as JSON -- which breaks on long text.
+Change: extract_required_skills no longer matches a fixed vocabulary. It now
+asks the MODEL to read the stored JD and return the skills it requires -- so it
+catches anything the posting asks for, not just a known list. This is a tool
+that itself uses the LLM.
 
-Memory (agent_memory.json) holds:
-  - resume       : your resume text
-  - current_jd   : the job description being assessed
+Memory (agent_memory.json) holds: resume, current_jd.
 
-Tool chain the agent runs:
-  1. get_resume              -> read the stored resume (so it can summarize)
-  2. extract_required_skills -> read the stored JD, return its required skills
+Tool chain:
+  1. get_resume              -> read the stored resume
+  2. extract_required_skills -> LLM reads the stored JD, returns required skills
   3. find_missing_keywords   -> compare those skills against the stored resume
   4. summarize the fit
 
@@ -20,6 +18,7 @@ Runtime model: Groq (free tier), via its OpenAI-compatible endpoint.
 """
 
 import os
+import re
 import json
 from openai import OpenAI
 from dotenv import load_dotenv
@@ -72,7 +71,6 @@ RESUME_FILE = "my_resume.txt"
 
 
 def load_resume_from_file() -> None:
-    """If my_resume.txt exists, load its text as the resume in memory."""
     if os.path.exists(RESUME_FILE):
         with open(RESUME_FILE, "r", encoding="utf-8") as f:
             text = f.read().strip()
@@ -84,35 +82,57 @@ def load_resume_from_file() -> None:
 
 
 def set_current_jd(jd_text: str) -> None:
-    """Store the JD being assessed in memory so tools can read it."""
     mem = load_memory()
     mem["current_jd"] = jd_text
     save_memory(mem)
 
 
-# --- Tools (they READ from memory; the model passes only small data) ---------
-SKILL_VOCAB = [
-    "Python", "Java", "C#", "C++", "JavaScript", "TypeScript", "SQL", "Go", "Bash",
-    "React", "Angular", "Next.js", "Node.js", "Flask", "Django", "FastAPI", "Spring Boot",
-    "PostgreSQL", "MySQL", "MongoDB", "Redis", "SQLite",
-    "AWS", "Azure", "GCP", "Docker", "Kubernetes", "CI/CD", "Terraform", "Linux",
-    "REST", "GraphQL", "gRPC", "WebSockets", "Microservices",
-    "pytest", "Selenium", "JUnit", "Jest", "Git", "Agile",
-]
+# --- Helper: parse a skills list out of model text (defensively) -------------
+def _parse_skill_list(text: str) -> list:
+    """Pull a JSON array of skills out of model output, tolerating fences/prose."""
+    text = (text or "").strip()
+    match = re.search(r"\[.*\]", text, re.DOTALL)  # find the first [ ... ]
+    if match:
+        try:
+            arr = json.loads(match.group(0))
+            return [str(s).strip() for s in arr if str(s).strip()]
+        except Exception:
+            pass
+    # Fallback: split on commas/newlines and clean bullets.
+    return [s.strip("-•* \t") for s in re.split(r"[\n,]", text) if s.strip("-•* \t")]
 
 
+# --- Tools -------------------------------------------------------------------
 def get_resume() -> dict:
-    """Retrieve the user's resume from memory (so the model can read it)."""
+    """Retrieve the user's resume from memory."""
     mem = load_memory()
     return {"resume": mem.get("resume", "")}
 
 
 def extract_required_skills() -> dict:
-    """Read the stored JD from memory and return the known skills it mentions."""
+    """Ask the LLM to read the stored JD and return the skills it requires."""
     mem = load_memory()
-    text = mem.get("current_jd", "").lower()
-    found = [skill for skill in SKILL_VOCAB if skill.lower() in text]
-    return {"required_skills": found}
+    jd = mem.get("current_jd", "")
+    if not jd:
+        return {"required_skills": []}
+
+    resp = client.chat.completions.create(
+        model=MODEL,
+        messages=[
+            {
+                "role": "system",
+                "content": (
+                    "Extract the distinct technical skills, tools, languages, and "
+                    "technologies the job requires or prefers. Use short canonical "
+                    "names (e.g., 'AWS', 'Docker', 'React', 'CI/CD', 'REST', 'Python'). "
+                    "Return ONLY a JSON array of strings, nothing else."
+                ),
+            },
+            {"role": "user", "content": jd},
+        ],
+    )
+    content = resp.choices[0].message.content or "[]"
+    return {"required_skills": _parse_skill_list(content)}
 
 
 def find_missing_keywords(required_skills: list) -> dict:
@@ -139,7 +159,7 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "extract_required_skills",
-            "description": "Extract the required technical skills from the stored job description.",
+            "description": "Read the stored job description and return the skills it requires.",
             "parameters": {"type": "object", "properties": {}},
         },
     },
@@ -236,10 +256,9 @@ def run_agent(user_message: str, max_steps: int = 8) -> str:
 
 # --- Try it ------------------------------------------------------------------
 if __name__ == "__main__":
-    load_resume_from_file()    # if my_resume.txt exists, use your real resume
-    ensure_resume_in_memory()  # otherwise seed a sample on first run
+    load_resume_from_file()
+    ensure_resume_in_memory()
 
-    # Paste a REAL job description into jd.txt to test it.
     SAMPLE_JD = (
         "We're hiring a Software Engineer to build backend services in Python "
         "and a React frontend. You'll deploy on AWS using Docker and maintain "
@@ -254,7 +273,7 @@ if __name__ == "__main__":
         jd_text = SAMPLE_JD
         print(f"(No {JD_FILE} found -- using the built-in sample. Create {JD_FILE} to test a real JD.)\n")
 
-    set_current_jd(jd_text)  # store the JD so tools can read it (no big arg through the model)
+    set_current_jd(jd_text)
 
     task = (
         "A resume and a job description are stored in memory. "
